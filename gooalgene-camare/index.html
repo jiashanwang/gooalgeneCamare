@@ -1,0 +1,278 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <!-- default-src 'self' data: gap: https://ssl.gstatic.com 'unsafe-eval'; -->
+    <meta http-equiv="Content-Security-Policy" content=" style-src 'self' 'unsafe-inline'; media-src *">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, minimal-ui">    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-tap-highlight" content="no">
+    <title>My App</title>
+    <link rel="stylesheet" type="text/css" href="css/common.css">
+    <link rel="stylesheet" type="text/css" href="css/tips.css">
+    <link rel="stylesheet" href="css/normal.css">
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/fit.js"></script>
+    <script type="text/javascript">
+         $(function () {
+            if (/(iPhone|iPad|iPod|iOS)/i.test(navigator.userAgent)) {
+                $("header").css("padding-top", "1rem");
+                $("section").css("top", "3rem");
+                $('header a').css('margin-top','0.08rem');
+                $('.slide').css('top','3rem')
+            } else if (/(Android)/i.test(navigator.userAgent)) {
+                $('section').css('top','2rem')
+                $('.slide').css('top','2rem')
+                return true;
+            };
+        })
+
+    </script>
+</head>
+<body>
+    <header style="display: block;">
+            <p>实验记录</p>
+            <!-- <a class="back" href="javascript:;"></a> -->
+            <a id="addMenu" class="add" href="javascript:;"></a>
+    </header>
+    <div class="wrap">
+        <section>
+            <ol class="slide" style="display: none;">
+                <li>
+                    <i id="add_record" class="slide-icon addRecord"></i>
+                    <span name="1">新建记录</span>
+                </li>
+                <li>
+                    <i class="slide-icon addModule"></i>
+                    <span name="2">编辑模板</span>
+                </li>
+                <li>
+                    <i class="slide-icon exportData"></i>
+                    <span name="3">数据导出</span>
+                </li>
+                <li>
+                    <i class="slide-icon clearData"></i>
+                    <span name="4">清空全部数据</span>
+                </li>
+            </ol>
+            <div class="refresh"></div>
+            <ul class="list">
+            </ul>
+            <h5 class='loading' style="display: none;">数据加载中 <a href="javascript:;"></a></h5>
+            <h5 class='no-more' style="display: none;">暂无更多数据</h5>
+            <div class="no-data" style="display: none;">
+                老铁,暂时没有数据哦~
+            </div>
+        </section>
+    </div>
+    <script type="text/javascript" src="cordova.js"></script>
+
+    <script src="data/indexList.js"></script>
+    <script src="data/classify.js"></script>
+
+    <script src="js/tips.js"></script>
+    <script src="js/common.js"></script>
+    <script src="js/helper.js"></script>
+    <script type="text/javascript">
+        var noData=false;
+        var timer=null;
+
+        showLoadingPop({text:"加載中"});
+        if(!window.localStorage){
+            alert('您的浏览器不支持本地存储！')
+        }
+
+        $(document).on('touchstart',function(){
+            $('.slide').slideUp();
+            $('#addMenu').removeClass('error').addClass('add')
+        })
+        //menu
+        $('#addMenu').on('touchstart',function(e){
+            if($(this).hasClass('add')){
+                $('.slide').slideDown();
+                $(this).removeClass('add').addClass('error');
+            }else{
+                $('.slide').slideUp();
+                $(this).removeClass('error').addClass('add');
+            }
+            return false;
+        });
+        //头部菜单
+        $('.slide li').on('touchstart',function(){
+            $('.slide li').removeClass('active');
+            var _this=$(this);
+            var action=_this.find('span').attr('name');
+            _this.addClass('active');
+
+            switch(action){
+                case '1':
+                    location.href="addRecord.html?auto=false    ";
+                break;
+                case '2':
+                    location.href="editTemplate.html"
+                break;
+                case '3':
+                    if(!localStorage.getItem('indexList')){
+                        showTips({text:"暂无可供导出的数据"});
+                    }else{
+                        writeRecords(localStorage.getItem('indexList'),function(){
+                            showPop({
+                                title:"系统提示",
+                                describe:"数据导出完成，是否清除已有数据?",
+                                callback:function(){
+                                     localStorage.removeItem('indexList'); 
+                                     $('.list').html('');
+                                     $('.content').show();
+                                     $('h5').hide();
+                                     showTips({text:"数据删除成功！"}); 
+                                },
+                                sure:"果断删除"
+                            });
+                        });
+                    }
+                break;
+                case '4':
+                    showPop({
+                        title:"温馨提示",
+                        describe:"确定清空全部数据吗？",
+                        callback:function(){
+                            localStorage.clear();
+                            $('.list').html('');
+                            showTips({text:"数据删除成功",success:function(){
+                                 $('h5').hide();
+                                 $('.no-data').show();
+                            }})
+                        }
+                    })
+                break;
+            }
+        })
+        
+        //data
+        var indexList=JSON.parse(localStorage.getItem('indexList'));
+        if(indexList && indexList.list.length>0){
+            loadMore(indexList.list);
+        }else{
+            $('h5').hide();
+            $('.no-data').show();
+        }
+
+        function loadMore(data){
+            step=5;
+            num=1;
+            iCount=0;
+
+            var oWinHeight=document.documentElement.clientHeight;
+            $(document).on('scroll',function(){
+                var scrollDis=$(this).scrollTop();
+                var oHeight=$(this).height();
+                var timerOut=null;
+                if(scrollDis==oHeight-oWinHeight){
+                   if(!noData){ 
+                        $('.loading').show();
+                        timerOut=setTimeout(function(){
+                            load(indexList.list);
+                        },rnd(1000,3000))
+                    }else{
+                        return;
+                    }
+                }
+            })
+            load(data);
+            function load(data){
+                if(data.length && data.length!=0){
+                    noData=false;
+                    $('.no-data').hide();
+                    for(var i=step*(num-1);i<step*num;i++){
+                        if(iCount==data.length){
+                            $('.loading').hide();
+                            $('.no-more').show();
+                            noData=true;
+                            return;
+                        }else{
+                            var str2='';
+                            str2+='<li data-id="'+data[i].time+'">\
+                                    <img src="'+data[i].src+'">\
+                                    <div class="right">\
+                                        <h2 class="clearfix">\
+                                            <span>'+data[i].name+'</span><em>'+changeTime(data[i].time)+'</em>\
+                                        </h2>\
+                                        <h3>'+data[i].number+'</h3>\
+                                        <P>'+data[i].breedName+'</P>\
+                                        <h4 class="clearfix">\
+                                            <span>'+data[i].address+'</span>\
+                                            <i class="camera"></i>\
+                                        </h4>\
+                                    </div>\
+                                    <div class="delete">删除</div>\
+                                </li>';
+                            $('.list').append(str2);
+                            iCount++;
+                             //详情
+                            var aLi=document.querySelectorAll('.list li');
+                            var newX,oldX;
+                            $('.list li').off('click').on('click',function(){
+                                var id=$(this).attr('data-id');
+                                location.href='detail.html?id='+id;
+                            });
+                            $('.camera').off('click').on('click',function(e){
+                                location.href = "addRecord.html?auto=true";
+                                e.stopPropagation();
+                            });
+                            //滑动删除
+                            for(var o=0;o<aLi.length;o++){
+                                aLi[o].removeEventListener('touchstart',swipeDelete,false);
+                                aLi[o].addEventListener('touchstart',swipeDelete,false); 
+                            }
+
+                            $('.delete').off('touchstart').on('touchstart',function(){
+                                var _this=$(this);
+                                var id=_this.parent().attr('data-id');
+                                showPop({title:"系统提示",describe:"确定删除当前信息吗?",callback:function(){
+                                    _this.parent().remove();
+                                    deleteRecord(id);
+                                }})
+                            })
+
+                            function swipeDelete(e){
+                                var _this=this;
+                                oldX=e.touches[0].clientX;
+                                this.addEventListener('touchmove',getNewPos,false);
+                                _this.addEventListener('touchend',end,false)
+                                function getNewPos(e){
+                                    newX=e.touches[0].clientX;
+                                }
+                                function end(e){
+                                    var disX=oldX-newX;
+                                    if(disX>80){
+                                        $(_this).siblings().removeClass('trans').addClass('end')
+                                        $(_this).removeClass('end').addClass('trans');
+                                    }else{
+                                        $(_this).siblings().removeClass('trans').addClass('end')
+                                        $(_this).removeClass('trans').addClass('end')
+                                    }  
+                                    _this.removeEventListener('touchmove',getNewPos,false);
+                                    _this.removeEventListener('touchend',end,false);
+                                }
+                            }
+                        }
+                    }
+                    num++;
+                }else{
+                    $('.loading').hide();
+                    $('.no-data').show();
+                    return;
+                }
+            }
+        }
+        clearTimeout(timer);
+        timer=setTimeout(function(){
+            hideLoadingPop();
+        },rnd(100,280));
+
+    </script>
+</body>
+
+</html>
